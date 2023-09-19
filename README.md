@@ -1,5 +1,6 @@
 # project_rock_mixing
-Mixing in rocks
+Mixing in rocks.
+This is my (Paiman's) project now ;)
 
 ### Baker's benchmark
 1. Get [meshtools](https://github.com/gautelinga/meshtools) and install: ```pip install . ```
