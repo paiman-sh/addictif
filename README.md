@@ -18,7 +18,7 @@ python3 normalize_velocity.py --mesh path_to_the_mesh_file/ --vel path_to_the_ve
 ```
 mpiexec -np [NUM_PROCESSES] python3 ade_steady.py --mesh path_to_the_mesh_file/ --vel path_to_the_normalized_velocity_file/ --con path_where_concentration_will_be_stored/ --direction x --D 0.01 --L 0.2 --refine True --it 0
 ```
-Here, we use the same flow direction as the one we considered to derive the velocity field. We may define the diffusion coefficient ```D``` and the pore size ```L```. The option for ```--refine True ``` is going to refine the mesh of the area with a high gradient of concentration and it is going to store the mesh in a separate file.
+Here, we use the same flow direction as the one we considered to derive the velocity field. We may define the diffusion coefficient ```D``` and the pore size ```L```. The option ```--refine True ``` is going to refine the mesh of the area with a high gradient of concentration and it is going to store the mesh in a separate file.
 
 ### Post-processing
 4. Run with ```it = 0, 1, 2, etc.``` to have the concentration with refined mesh at the area with a high gradient of concentration.
