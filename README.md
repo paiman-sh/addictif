@@ -19,6 +19,6 @@ Here, we use the same flow direction as the one we considered to derive the velo
 3. Run with ```it = 0, 1, 2, etc.``` to have the concentration with refined mesh at the area with a high gradient of concentration.
 4. If we assume we have the reaction ```a + b -> c``` with an infinite Damkholer number, we can derive the concentration of ```a```, ```b```, and ```c``` by running ```post_processing_abc.py``` :
 ```
-mpiexec -np [NUM_PROCESSES] python3 post_processing_abc.py --mesh path_to_the_mesh_file/ --vel path_to_the_normalized_velocity_file/ --con path_where_concentration_will_be_stored/ --direction x --D 0.01 --L 0.2 --it 4
+mpiexec -np [NUM_PROCESSES] python3 post_processing_abc.py --mesh path_to_the_mesh_file/ --con path_where_concentration_will_be_stored/ --D 0.01 --L 0.2 --it 4
 ```
 Note that we run the post_processing code on the results of the final iteration.
