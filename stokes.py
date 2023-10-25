@@ -1,6 +1,6 @@
 import dolfin as df
-from dolfin import *
 import numpy as np
+from utils import mpi_print, mpi_max, mpi_min, Top, Btm, Boundary, SideWallsY, SideWallsZ, SideWallsX
 import os
 from mpi4py import MPI
 import argparse
@@ -10,6 +10,7 @@ def parse_args():
     parser.add_argument("--mesh", type=str, default='mesh/', help="path to the mesh")
     parser.add_argument("--vel", type=str, default='velocity/', help="path to the velocity")
     parser.add_argument("--direction", type=str, default='z', help="x or z direction of flow")
+    parser.add_argument("--tol", type=float, default=df.DOLFIN_EPS_LARGE, help="tol for subdomains")
     return parser.parse_args()
 
 comm = MPI.COMM_WORLD
@@ -22,92 +23,14 @@ if __name__ == "__main__":
 
     direction = args.direction
 
-    if direction == 'x':
-
-        class GenSubDomain(df.SubDomain):
-            def __init__(self, x_min, x_max, tol=df.DOLFIN_EPS_LARGE):
-                self.x_min = x_min
-                self.x_max = x_max
-                self.tol = tol
-                super().__init__()
-
-        class Btm(GenSubDomain):
-            def inside(self, x, on_boundary):
-                return on_boundary and x[0] > self.x_max[0] - self.tol
-
-        class Top(GenSubDomain):
-            def inside(self, x, on_boundary):
-                return on_boundary and x[0] < self.x_min[0] + self.tol
-            
-        class Boundary(df.SubDomain):
-            def inside(self, x, on_boundary):
-                return on_boundary
-
-        class SideWallsZ(GenSubDomain):
-            def inside(self, x, on_boundary):
-                return on_boundary and bool(
-                    x[2] < self.x_min[2] + self.tol or x[2] > self.x_max[2] - self.tol)
-                    
-        class SideWallsY(GenSubDomain):
-            def inside(self, x, on_boundary):
-                return on_boundary and bool( 
-                    x[1] < self.x_min[1] + self.tol or x[1] > self.x_max[1] - self.tol)
-    
-    if direction == 'z':
-        class GenSubDomain(df.SubDomain):
-            def __init__(self, x_min, x_max, tol=df.DOLFIN_EPS_LARGE):
-                self.x_min = x_min
-                self.x_max = x_max
-                self.tol = tol
-                super().__init__()
-
-        class Top(GenSubDomain):
-            def inside(self, x, on_boundary):
-                return on_boundary and x[2] > self.x_max[2] - self.tol
-
-        class Btm(GenSubDomain):
-            def inside(self, x, on_boundary):
-                return on_boundary and x[2] < self.x_min[2] + self.tol
-            
-        class Boundary(df.SubDomain):
-            def inside(self, x, on_boundary):
-                return on_boundary
-
-        class SideWallsX(GenSubDomain):
-            def inside(self, x, on_boundary): 
-                return on_boundary and bool(
-                    x[0] < self.x_min[0] + self.tol or x[0] > self.x_max[0] - self.tol)
-                    
-        class SideWallsY(GenSubDomain):
-            def inside(self, x, on_boundary):
-                return on_boundary and bool( 
-                    x[1] < self.x_min[1] + self.tol or x[1] > self.x_max[1] - self.tol)
-
-
-    def mpi_max(x):
-        x_max_loc = x.max(axis=0)
-        x_max = np.zeros_like(x_max_loc)
-        comm.Allreduce(x_max_loc, x_max, op=MPI.MAX)
-        return x_max
-
-    def mpi_min(x):
-        x_min_loc = x.min(axis=0)
-        x_min = np.zeros_like(x_min_loc)
-        comm.Allreduce(x_min_loc, x_min, op=MPI.MIN)
-        return x_min
-
-    def mpi_print(*args):
-        if rank == 0:
-            print(*args)    
-
     # Create the mesh
     mpi_print('importing mesh')
-    mesh = Mesh()
+    mesh = df.Mesh()
     with df.HDF5File(mesh.mpi_comm(), args.mesh+'/mesh.h5', "r") as h5f_up:
         h5f_up.read(mesh, "mesh", False)
     mpi_print('mesh done')
 
-    tol = 1e-2
+    tol = args.tol
 
     x = mesh.coordinates()[:]
 
@@ -117,113 +40,104 @@ if __name__ == "__main__":
     mpi_print(x_max, x_min)
 
     # Define function spaces
-    V = VectorElement("Lagrange", mesh.ufl_cell(), 2)
-    P = FiniteElement("Lagrange", mesh.ufl_cell(), 1)
-    VP = MixedElement([V, P])
-    W = FunctionSpace(mesh , VP)
+    V = df.VectorElement("Lagrange", mesh.ufl_cell(), 2)
+    P = df.FiniteElement("Lagrange", mesh.ufl_cell(), 1)
+    VP = df.MixedElement([V, P])
+    W = df.FunctionSpace(mesh , VP)
 
     # Boundaries
     subd = df.MeshFunction("size_t", mesh, mesh.topology().dim() - 1)
     subd.rename("subd", "subd")
     subd.set_all(0)
-    
-    if direction == 'x':
-        grains = Boundary()
-        sidewalls_z = SideWallsZ(x_min, x_max, tol)
-        sidewalls_y = SideWallsY(x_min, x_max, tol)
-        top = Top(x_min, x_max, tol)
-        btm = Btm(x_min, x_max, tol)
-
-        grains.mark(subd, 3)
-        sidewalls_z.mark(subd, 4)
-        sidewalls_y.mark(subd, 5)
-        top.mark(subd, 1)
-        btm.mark(subd, 2)
+                
+    grains = Boundary()
     if direction == 'z':
-        grains = Boundary()
         sidewalls_x = SideWallsX(x_min, x_max, tol)
-        sidewalls_y = SideWallsY(x_min, x_max, tol)
-        top = Top(x_min, x_max, tol)
-        btm = Btm(x_min, x_max, tol)
+    if direction == 'x':
+        sidewalls_z = SideWallsZ(x_min, x_max, tol)
+    sidewalls_y = SideWallsY(x_min, x_max, tol)
+    top = Top(x_min, x_max, tol, direction)
+    btm = Btm(x_min, x_max, tol, direction)
 
-        grains.mark(subd, 3)
+    grains.mark(subd, 3)
+    if direction == 'z':
         sidewalls_x.mark(subd, 4)
-        sidewalls_y.mark(subd, 5)
-        top.mark(subd, 1)
-        btm.mark(subd, 2)
+    if direction == 'x':
+        sidewalls_z.mark(subd, 4)
+    sidewalls_y.mark(subd, 5)
+    top.mark(subd, 1)
+    btm.mark(subd, 2)
  
-    with XDMFFile(mesh.mpi_comm(), args.mesh+"subd.xdmf") as xdmff:
+    with df.XDMFFile(mesh.mpi_comm(), args.mesh+"subd.xdmf") as xdmff:
         xdmff.write(subd)
 
-
-    # No-slip boundary condition for velocity
+    noslip = df.Constant((0.0, 0.0, 0.0))
+    bc_porewall = df.DirichletBC(W.sub(0), noslip, subd, 3)
+    bc_slip_y = df.DirichletBC(W.sub(0).sub(1), df.Constant(0.), subd, 5)
+    bc_top = df.DirichletBC(W.sub(1), df.Constant(0.), subd, 1)
+    bc_bottom = df.DirichletBC(W.sub(1), df.Constant(0.), subd, 2)
     if direction == 'x':
-        noslip = Constant((0.0, 0.0, 0.0))
-        bc_porewall = DirichletBC(W.sub(0), noslip, subd, 3)
-        bc_slip_z = DirichletBC(W.sub(0).sub(2), Constant(0.), subd, 4)
-        bc_slip_y = DirichletBC(W.sub(0).sub(1), Constant(0.), subd, 5)
-        bc_top = DirichletBC(W.sub(1), Constant(0.), subd, 1)
-        bc_bottom = DirichletBC(W.sub(1), Constant(0.), subd, 2)
-        # Collect boundary conditions
+        bc_slip_z = df.DirichletBC(W.sub(0).sub(2), df.Constant(0.), subd, 4)
         bcs = [bc_porewall, bc_slip_y, bc_slip_z, bc_top, bc_bottom]
-    
     if direction == 'z':
-        noslip = Constant((0.0, 0.0, 0.0))
-        bc_porewall = DirichletBC(W.sub(0), noslip, subd, 3)
-        bc_slip_x = DirichletBC(W.sub(0).sub(0), Constant(0.), subd, 4)
-        bc_slip_y = DirichletBC(W.sub(0).sub(1), Constant(0.), subd, 5)
-        bc_top = DirichletBC(W.sub(1), Constant(0.), subd, 1)
-        bc_bottom = DirichletBC(W.sub(1), Constant(0.), subd, 2)
-        # Collect boundary conditions
+        bc_slip_x = df.DirichletBC(W.sub(0).sub(0), df.Constant(0.), subd, 4)
         bcs = [bc_porewall, bc_slip_x, bc_slip_y, bc_top, bc_bottom]
 
     if direction == 'x':
-        f = Constant((1.0, 0.0, 0.0))
+        f = df.Constant((1.0, 0.0, 0.0))
     if direction == 'z':
-        f = Constant((0.0, 0.0, -1.0))
+        f = df.Constant((0.0, 0.0, -1.0))
 
     # Define variational problem
-    (u, p) = TrialFunctions(W)
-    (v, q) = TestFunctions(W)
+    (u, p) = df.TrialFunctions(W)
+    (v, q) = df.TestFunctions(W)
 
-    a = inner(grad(u), grad(v))*dx + div(v)*p*dx + q*div(u)*dx
-    L = inner(f, v)*dx
+    a = df.inner(df.grad(u), df.grad(v))*df.dx + df.div(v)*p*df.dx + q*df.div(u)*df.dx
+    L = df.inner(f, v)*df.dx
 
     # Form for use in constructing preconditioner matrix
-    b = inner(grad(u), grad(v))*dx + p*q*dx
+    b = df.inner(df.grad(u), df.grad(v))*df.dx + p*q*df.dx
 
     # Assemble system
-    A, bb = assemble_system(a, L, bcs)
+    A, bb = df.assemble_system(a, L, bcs)
 
     # Assemble preconditioner system
-    P, btmp = assemble_system(b, L, bcs)
+    P, btmp = df.assemble_system(b, L, bcs)
 
 
     # Create Krylov solver and AMG preconditioner
-    solver = KrylovSolver("minres", "hypre_amg")
+    solver = df.KrylovSolver("minres", "hypre_amg")
     solver.parameters["monitor_convergence"] = True
-    solver.parameters["relative_tolerance"] = 1e-9 
+    solver.parameters["relative_tolerance"] = 1e-12
+    #solver.parameters["maximum_iterations"] = 13000
 
     # Associate operator (A) and preconditioner matrix (P)
     solver.set_operators(A, P)
 
+    mpi_print("computing volume")
+    vol = df.assemble(df.Constant(1.) * df.dx(domain=mesh))
+
     mpi_print('solving')
     # Solve
-    U = Function(W)
+    U = df.Function(W)
 
     solver.solve(U.vector(), bb)
+    mpi_print('solving done')
 
     # Get sub-functions
-    u, p = U.split(deepcopy=True)
+    u_, p_ = U.split(deepcopy=True)
+
+    dir_index = 2 if direction == "z" else 0
+    ui_mean = abs(df.assemble(u_[dir_index] * df.dx))/vol
+    u_.vector()[:] /= ui_mean
 
     # Create XDMF files for visualization output
-    xdmffile_u = XDMFFile(args.vel+'v_show.xdmf')
+    xdmffile_u = df.XDMFFile(args.vel+'v_show.xdmf')
     xdmffile_u.parameters["flush_output"] = True
     # Save solution to file (XDMF/HDF5)
-    xdmffile_u.write(u)
-
+    xdmffile_u.write(u_)
 
     with df.HDF5File(mesh.mpi_comm(), args.vel+"v_hdffive.h5", "w") as h5f:
-        h5f.write(u, "u")
+        h5f.write(u_, "u")
 
 

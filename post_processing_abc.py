@@ -12,7 +12,6 @@ def parse_args():
     parser.add_argument("--D", type=float, default=1e-2, help="Diffusion")
     parser.add_argument("--L", type=float, default=1, help="Pore size")
     parser.add_argument("--mesh", type=str, default='mesh/', help="path to the mesh")
-    parser.add_argument("--vel", type=str, default='velocity/', help="path to the velocity")
     parser.add_argument("--con", type=str, default='concentration/', help="path to the concentration")
     return parser.parse_args()
 
