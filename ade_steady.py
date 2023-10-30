@@ -178,15 +178,25 @@ if __name__ == "__main__":
     bc_delta_top = df.DirichletBC(S, delta_top, subd, 1)
     bcs_delta = [bc_delta_top]
 
+    t0 = df.Timer("Assembling system")
+    t0.start()
+
     problem_delta = df.LinearVariationalProblem(a_xi,L_delta, delta_, bcs=bcs_delta)
     solver_delta = df.LinearVariationalSolver(problem_delta)
 
+    t0.stop()
 
     solver_delta.parameters["linear_solver"] = linear_solver
     solver_delta.parameters["preconditioner"] = preconditioner
     solver_delta.parameters["krylov_solver"]["monitor_convergence"] = True
     solver_delta.parameters["krylov_solver"]["relative_tolerance"] = 1e-9
+
+    t1 = df.Timer("Solving conservative transport")
+    t1.start()
+    
     solver_delta.solve()
+
+    t1.stop()
 
     mpi_print('solving done')
     
@@ -207,6 +217,8 @@ if __name__ == "__main__":
 
     mpi_print('saving done')
    
+    df.list_timings(df.TimingClear.clear, [df.TimingType.wall])
+
     if args.refine == True:
         mpi_print("computing absgrad")
         absgrad_delta = df.interpolate(df.CompiledExpression(helpers.AbsGrad(), a=delta, degree=0), S_DG0)
