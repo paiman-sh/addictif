@@ -7,7 +7,10 @@ with strong support from Tanguy Le Borgne
 """
 import numpy as np
 from numpy.polynomial import polynomial as npol
-from scipy.special import erf
+
+c_ref = 10**-7
+
+nspec = 6
 
 def compute_secondary_spec(c_, K_):
     c_[2] = c_[0] * c_[1]**-1 * K_[0]
@@ -88,12 +91,13 @@ def equilibrium_constants(c_ref):
     K_ = np.array([K_1 / c_ref, K_2 / c_ref**2, K_3, K_4 / c_ref**2])
     return K_
 
-nspec = 6
-
 if __name__ == "__main__":
+    ## Testing
+
+    from scipy.special import erf
+
     # mixing ratio
     # alpha=1/2;
-
 
     # vector of chemical species 
     # 1: CO2, 2: H^+, 3: HCO3^-, 4: CO3^2-, 5: Ca^2+, 6: OH^-

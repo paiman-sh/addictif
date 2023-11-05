@@ -1,34 +1,42 @@
 import dolfin as df
 import numpy as np
-from utils import mpi_print, mpi_max, mpi_min, Top, Btm, Boundary, SideWallsY, SideWallsZ, SideWallsX
+from utils import mpi_print, mpi_max, mpi_min, create_folder_safely, Top, Btm, Boundary, SideWalls, Params, axis2index
 import os
 from mpi4py import MPI
 import argparse
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Solve Stokes velocity")
-    parser.add_argument("--mesh", type=str, default='mesh/', help="path to the mesh")
-    parser.add_argument("--vel", type=str, default='velocity/', help="path to the velocity")
-    parser.add_argument("--direction", type=str, default='z', help="x or z direction of flow")
-    parser.add_argument("--tol", type=float, default=df.DOLFIN_EPS_LARGE, help="tol for subdomains")
+    parser = argparse.ArgumentParser(description="Solve Stokes equations in a given mesh")
+    parser.add_argument("--mesh", type=str, required=True, help="Path to the mesh")
+    parser.add_argument("-o", "--output", type=str, required=True, help="Path to output directory")
+    parser.add_argument("--direction", type=str, default="z", help="x, y or z direction of flow")
+    parser.add_argument("--tol", type=float, default=df.DOLFIN_EPS_LARGE, help="Tolerance for subdomains")
+    parser.add_argument("--sidewall_bc", type=str, default="slip", help="Sidewall boundary conditon")
     return parser.parse_args()
-
-comm = MPI.COMM_WORLD
-rank = comm.Get_rank()
-size = comm.Get_size()
 
 if __name__ == "__main__":
 
     args = parse_args()
 
-    direction = args.direction
+    if args.direction not in axis2index:
+        mpi_print(f"Invalid direction: {args.direction}")
+        exit()
+    direction = axis2index[args.direction]
 
     # Create the mesh
-    mpi_print('importing mesh')
+    mpi_print("Importing mesh")
+
     mesh = df.Mesh()
-    with df.HDF5File(mesh.mpi_comm(), args.mesh+'/mesh.h5', "r") as h5f_up:
-        h5f_up.read(mesh, "mesh", False)
-    mpi_print('mesh done')
+    with df.HDF5File(mesh.mpi_comm(), args.mesh, "r") as h5f:
+        h5f.read(mesh, "mesh", False)
+    
+    mpi_print("Mesh read successfully.")
+
+    # Preparing for output
+    create_folder_safely(args.output)
+    velocity_folder = args.output # os.path.join(args.output, "velocity")
+    # create_folder_safely(velocity_folder)
+    mesh_relpath = os.path.relpath(args.mesh, velocity_folder)
 
     tol = args.tol
 
@@ -37,7 +45,7 @@ if __name__ == "__main__":
     x_min = mpi_min(x)
     x_max = mpi_max(x)
 
-    mpi_print(x_max, x_min)
+    mpi_print("Dimensions:", x_max, x_min)
 
     # Define function spaces
     V = df.VectorElement("Lagrange", mesh.ufl_cell(), 2)
@@ -51,42 +59,36 @@ if __name__ == "__main__":
     subd.set_all(0)
                 
     grains = Boundary()
-    if direction == 'z':
-        sidewalls_x = SideWallsX(x_min, x_max, tol)
-    if direction == 'x':
-        sidewalls_z = SideWallsZ(x_min, x_max, tol)
-    sidewalls_y = SideWallsY(x_min, x_max, tol)
+    sidewall_dims = [0, 1, 2]
+    sidewall_dims.remove(direction)
+    sidewalls = [SideWalls(x_min, x_max, dim, tol) for dim in sidewall_dims]
     top = Top(x_min, x_max, tol, direction)
     btm = Btm(x_min, x_max, tol, direction)
 
     grains.mark(subd, 3)
-    if direction == 'z':
-        sidewalls_x.mark(subd, 4)
-    if direction == 'x':
-        sidewalls_z.mark(subd, 4)
-    sidewalls_y.mark(subd, 5)
+    [sw.mark(subd, 4+index) for index, sw in enumerate(sidewalls)]
     top.mark(subd, 1)
     btm.mark(subd, 2)
  
-    with df.XDMFFile(mesh.mpi_comm(), args.mesh+"subd.xdmf") as xdmff:
+    with df.XDMFFile(mesh.mpi_comm(), os.path.join(velocity_folder, "subd.xdmf")) as xdmff:
         xdmff.write(subd)
 
     noslip = df.Constant((0.0, 0.0, 0.0))
+
     bc_porewall = df.DirichletBC(W.sub(0), noslip, subd, 3)
-    bc_slip_y = df.DirichletBC(W.sub(0).sub(1), df.Constant(0.), subd, 5)
     bc_top = df.DirichletBC(W.sub(1), df.Constant(0.), subd, 1)
     bc_bottom = df.DirichletBC(W.sub(1), df.Constant(0.), subd, 2)
-    if direction == 'x':
-        bc_slip_z = df.DirichletBC(W.sub(0).sub(2), df.Constant(0.), subd, 4)
-        bcs = [bc_porewall, bc_slip_y, bc_slip_z, bc_top, bc_bottom]
-    if direction == 'z':
-        bc_slip_x = df.DirichletBC(W.sub(0).sub(0), df.Constant(0.), subd, 4)
-        bcs = [bc_porewall, bc_slip_x, bc_slip_y, bc_top, bc_bottom]
+    
+    # Choose sidewall boundary conditions
+    if args.sidewall_bc == "slip":
+        bc_sidewalls = [df.DirichletBC(W.sub(0).sub(sw.dim), df.Constant(0.), subd, 4+index) for index, sw in enumerate(sidewalls)]
+    else:
+        bc_sidewalls = [df.DirichletBC(W.sub(0), noslip, subd, 4+index) for index in range(len(sidewalls))]
+    bcs = [bc_porewall, bc_top, bc_bottom, *bc_sidewalls]
 
-    if direction == 'x':
-        f = df.Constant((1.0, 0.0, 0.0))
-    if direction == 'z':
-        f = df.Constant((0.0, 0.0, -1.0))
+    F = [0., 0., 0.]
+    F[direction] = 1.0
+    f = df.Constant(F)
 
     # Define variational problem
     (u, p) = df.TrialFunctions(W)
@@ -104,40 +106,45 @@ if __name__ == "__main__":
     # Assemble preconditioner system
     P, btmp = df.assemble_system(b, L, bcs)
 
-
     # Create Krylov solver and AMG preconditioner
     solver = df.KrylovSolver("minres", "hypre_amg")
     solver.parameters["monitor_convergence"] = True
     solver.parameters["relative_tolerance"] = 1e-12
-    #solver.parameters["maximum_iterations"] = 13000
+    solver.parameters["maximum_iterations"] = 100000
 
     # Associate operator (A) and preconditioner matrix (P)
     solver.set_operators(A, P)
 
-    mpi_print("computing volume")
+    mpi_print("Computing volume")
     vol = df.assemble(df.Constant(1.) * df.dx(domain=mesh))
 
-    mpi_print('solving')
+    mpi_print("Solving system")
+
     # Solve
     U = df.Function(W)
 
     solver.solve(U.vector(), bb)
-    mpi_print('solving done')
+    mpi_print("Solving done.")
 
     # Get sub-functions
     u_, p_ = U.split(deepcopy=True)
 
-    dir_index = 2 if direction == "z" else 0
-    ui_mean = abs(df.assemble(u_[dir_index] * df.dx))/vol
+    ui_mean = abs(df.assemble(u_[direction] * df.dx))/vol
     u_.vector()[:] /= ui_mean
 
+    # Dump parameters
+    prm = Params()
+    prm["mesh"] = mesh_relpath
+    prm["direction"] = args.direction
+    prm["tol"] = args.tol
+    prm["sidewall_bc"] = args.sidewall_bc
+    prm.dump(os.path.join(velocity_folder, "params.dat"))
+
     # Create XDMF files for visualization output
-    xdmffile_u = df.XDMFFile(args.vel+'v_show.xdmf')
-    xdmffile_u.parameters["flush_output"] = True
-    # Save solution to file (XDMF/HDF5)
-    xdmffile_u.write(u_)
+    with df.XDMFFile(os.path.join(velocity_folder, "u_show.xdmf")) as xdmffile_u:
+        xdmffile_u.parameters["flush_output"] = True
+        # Save solution to file (XDMF/HDF5)
+        xdmffile_u.write(u_)
 
-    with df.HDF5File(mesh.mpi_comm(), args.vel+"v_hdffive.h5", "w") as h5f:
+    with df.HDF5File(mesh.mpi_comm(), os.path.join(velocity_folder, "u.h5"), "w") as h5f:
         h5f.write(u_, "u")
-
-

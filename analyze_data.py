@@ -1,194 +1,236 @@
 import dolfin as df
-from fenicstools import interpolate_nonmatching_mesh_any, StructuredGrid
-from itertools import product
+from fenicstools import Probes
 import h5py
 import os
 import numpy as np
 import argparse
+from utils import mpi_root, mpi_print, axis2index, index2axis, Params, mpi_max, mpi_min, helper_code
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Analyze steady ADR")
-    parser.add_argument("--it", type=int, default=0, help="Iteration")
-    parser.add_argument("--D", type=float, default=1e-2, help="Diffusion")
-    parser.add_argument("--L", type=float, default=1, help="Pore size")
-    parser.add_argument("--Lx", type=float, default=1, help="Lx")
-    parser.add_argument("--Ly", type=float, default=1, help="Ly")
-    parser.add_argument("--Lz", type=float, default=1, help="Lz")
-    parser.add_argument("--mesh", type=str, default='mesh/', help="path to the mesh")
-    parser.add_argument("--vel", type=str, default='velocity/', help="path to the velocity")
-    parser.add_argument("--con", type=str, default='concentration/', help="path to the concentration")
-    parser.add_argument("--direction", type=str, default='z', help="x or z direction of flow")
+    parser.add_argument("-i", "--input", type=str, required=True, help="Concentration file (required)")
+    parser.add_argument("-Nt", type=int, default=200, help="Number of interpolation points transverse")
+    parser.add_argument("-Nn", type=int, default=50, help="Number of interpolation points longitudinal")
+    # parser.add_argument("--it", type=int, default=0, help="Iteration")
+    # parser.add_argument("--D", type=float, default=1e-2, help="Diffusion")
+    # parser.add_argument("--L", type=float, default=1, help="Pore size")
+    # parser.add_argument("--Lx", type=float, default=1, help="Lx")
+    # parser.add_argument("--Ly", type=float, default=1, help="Ly")
+    # parser.add_argument("--Lz", type=float, default=1, help="Lz")
+    # parser.add_argument("--mesh", type=str, default='mesh/', help="path to the mesh")
+    # parser.add_argument("--vel", type=str, default='velocity/', help="path to the velocity")
+    # parser.add_argument("--con", type=str, default='concentration/', help="path to the concentration")
+    # parser.add_argument("--direction", type=str, default='z', help="x or z direction of flow")
     return parser.parse_args()
-
-    
-class Boundary(df.SubDomain):
-    def inside(self, x, on_boundary):
-        return on_boundary
-
-
-df.parameters["form_compiler"]["cpp_optimize"] = True
-df.parameters["form_compiler"]["optimize"] = True
-mpi_root = df.MPI.rank(df.MPI.comm_world) == 0     
-
 
 if __name__ == "__main__":
 
     args = parse_args()
 
-    direction = args.direction
-    D=args.D
-    pore_size = args.L
-    it = args.it
-    Lx = args.Lx
-    Ly = args.Ly
-    Lz = args.Lz
-    eps = 1e-8
+    prm_spec = Params(os.path.join(args.input, "params.dat"), required=True)
 
-    Pe__ = pore_size / D
+    # specii = ["a", "b", "c", 'delta']
+    specii = []
+    reaction_rates = []
+    if "ade" in prm_spec or "u" in prm_spec:
+        if "ade" in prm_spec:
+            specii = prm_spec["species"].split(",")
+            ade_path = os.path.join(args.input, prm_spec["ade"])
+            conc_key = "c_spec.h5"
+        elif "u" in prm_spec:
+            prm_ade = prm_spec
+            ade_path = args.input
+            specii = ["delta"]
+            conc_key = "delta.h5"
+        prm_ade = Params(os.path.join(ade_path, "params.dat"))
+        u_path = os.path.join(ade_path, prm_ade["u"])
+        mesh_path = os.path.join(ade_path, prm_ade["mesh"])
+        D = prm_ade["D"]
+    else:
+        u_path = args.input
 
+    if len(specii) > 1 and "reaction_rates" in prm_spec:
+        reaction_rates = prm_spec["reaction_rates"].split(",")
 
-    if direction == 'z':
-        L = [Lx, Ly, Lz - 2*eps]
-        N = [800, 800, 50]
-        dx = [Li/Ni for Li, Ni in zip(L, N)]
-        origin = [eps for dxi in dx]
+    prm_u = Params(os.path.join(u_path, "params.dat"))
 
-        vectors = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
-        dL = [Li-dxi for Li, dxi in zip(L, dx)]
-        dL[2] += dx[2]
-        N[2] += 1
+    mesh_u_path = os.path.join(u_path, prm_u["mesh"])
 
-    if direction == 'x':
-        L = [Lx- 2*eps, Ly, Lz]
-        N = [50, 800, 800]
-        dx = [Li/Ni for Li, Ni in zip(L, N)]
-        origin = [eps for dxi in dx]
+    direction = axis2index[prm_u["direction"]]
+    
+    helpers = df.compile_cpp_code(helper_code)
 
-        vectors = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
-        dL = [Li-dxi for Li, dxi in zip(L, dx)]
-        dL[0] += dx[0]
-        N[0] += 1
-
-
-    Jname = ["J_adv", "J_diff", "Iz"]
+    #pore_size = args.L
+    #it = args.it
+    #Lx = args.Lx
+    #Ly = args.Ly
+    #Lz = args.Lz
 
     # Create the mesh
     mesh_u = df.Mesh()
-    with df.HDF5File(mesh_u.mpi_comm(), args.mesh + 'mesh.h5', "r") as h5f_up:
-        h5f_up.read(mesh_u, "mesh", False)
+    with df.HDF5File(mesh_u.mpi_comm(), mesh_u_path, "r") as h5f:
+        h5f.read(mesh_u, "mesh", False)
+
+    coords = mesh_u.coordinates()[:]
+    x_max = mpi_max(coords)
+    x_min = mpi_min(coords)
+    L = x_max-x_min
+    mpi_print("Dimensions:", x_min, x_max)
+
+    eps = 1e-8
+
+    N = np.array([0, 0, 0])
+    tdims = [0, 1, 2]
+    tdims.remove(direction)
+
+    dxt = np.sqrt(L[tdims[0]]*L[tdims[1]]) / args.Nt
+    for dim in tdims:
+        N[dim] = int(np.ceil(L[dim]/dxt))
+    N[direction] = args.Nn
+    dx = L / N
+
+    # Pe__ = pore_size / D
+    #N = [200, 200, 50]
+
+    x = [np.linspace(x_min[i], x_max[i], N[i], endpoint=False)+0.5*dx[i] for i in range(3)]
+    X, Y, Z = np.meshgrid(*x, indexing='ij')
+    pts = np.vstack([X.flatten(), Y.flatten(), Z.flatten()]).T
+
+    Jname = ["J_adv", "J_diff", "Iz"]
 
     V_u = df.VectorFunctionSpace(mesh_u, "Lagrange", 2)
     S_u = df.FunctionSpace(mesh_u, "Lagrange", 2)
     u_ = df.Function(V_u)
 
-    with df.HDF5File(mesh_u.mpi_comm(), args.vel + "v_hdffive.h5", "r") as h5f:
+    with df.HDF5File(mesh_u.mpi_comm(), os.path.join(u_path, "u.h5"), "r") as h5f:
         h5f.read(u_, "u")
 
-
-    subd = df.MeshFunction("size_t", mesh_u, mesh_u.topology().dim() - 1)
-    subd.rename("subd", "subd")
-    subd.set_all(0)
-
-    #wall = Boundary()
-    #wall.mark(subd, 1)
-
-    #uwall = df.DirichletBC(S_u, df.Constant(0.), subd, 1)
-
-    if mpi_root:
-        print("Initial projection")
-    u_x_ = df.project(u_[0], S_u, solver_type="gmres", preconditioner_type="amg")#, bcs=uwall)
-    u_y_ = df.project(u_[1], S_u, solver_type="gmres", preconditioner_type="amg")#, bcs=uwall)
-    u_z_ = df.project(u_[2], S_u, solver_type="gmres", preconditioner_type="amg")#, bcs=uwall)
-    if mpi_root:
-        print("done")
-        
-    if it == 0: 
-        mesh = mesh_u
-    else: 
-        mesh = df.Mesh()
-        with df.HDF5File(mesh.mpi_comm(), args.mesh+"refined_mesh/mesh_Pe{}_it{}.h5".format(Pe__, it), "r") as h5f_up:
-            h5f_up.read(mesh, "mesh", False)
-
-    S = df.FunctionSpace(mesh, "Lagrange", 1)
-
-    specii = ["a", "b", "c", 'delta']
-    conc_ = dict()
-    for species in specii:
-        conc_[species] = df.Function(S, name=species)
+    mpi_print("Initial assignment.")
+    #u_x_ = df.project(u_[0], S_u, solver_type="gmres", preconditioner_type="petsc_amg") #, bcs=uwall)
+    #u_y_ = df.project(u_[1], S_u, solver_type="gmres", preconditioner_type="petsc_amg") #, bcs=uwall)
+    #u_z_ = df.project(u_[2], S_u, solver_type="gmres", preconditioner_type="petsc_amg") #, bcs=uwall)
+    ux_ = [df.Function(S_u, name=f"u_{dim}") for dim in range(3)]
+    [df.assign(uxi_, u_.sub(dim)) for dim, uxi_ in enumerate(ux_)]
+    phi_ = df.Function(S_u, name="phi")
+    phi_.vector()[:] = 1.0
     
-    with df.HDF5File(mesh.mpi_comm(), args.con + "abc/con_Pe{}_it{}.h5".format(Pe__, it), "r") as h5f:
+    mpi_print("Probing u.")
+    prob_u = Probes(pts.flatten(), S_u)
+    ux_data = []
+    for i in range(3):
+        prob_u(ux_[i])
+        ux_data.append(prob_u.array(0))
+        prob_u.clear()
+    prob_u(phi_)
+    phi_data = prob_u.array(0)
+    prob_u.clear()
+
+    if mpi_root:
+        ofilename = os.path.join(args.input, "intpdata.h5")
+        ofile = h5py.File(ofilename, "w")
+        for dim in range(3):
+            ofile.create_dataset(f"u{index2axis[dim]}", data=ux_data[dim].reshape(N))
+            ofile.create_dataset(index2axis[dim], data=x[dim])
+        ofile.create_dataset("phi", data=phi_data.reshape(N))
+        ofile.attrs["direction"] = direction
+        ofile.attrs["x_max"] = x_max.tolist()
+        ofile.attrs["x_min"] = x_min.tolist()
+    
+    if len(specii) > 0:
+        if mpi_root:
+            ofile.attrs["D"] = D
+
+        mesh = df.Mesh()
+        with df.HDF5File(mesh.mpi_comm(), mesh_path, "r") as h5f:
+            h5f.read(mesh, "mesh", False)
+
+        mpi_print("Setting up function spaces.")
+        S = df.FunctionSpace(mesh, "Lagrange", 1)
+        V_DG0 = df.VectorFunctionSpace(mesh, "DG", 0)
+        S_DG0 = df.FunctionSpace(mesh, "DG", 0)
+
+        conc_ = dict()
         for species in specii:
-            h5f.read(conc_[species], species)
-            
+            conc_[species] = df.Function(S, name=species)
 
-    Jz_diff_ = dict()
-    Iz_ = dict()
-    for species in specii:
-        #Jz_loc = [u_proj_z_ * conc_[species], - D * conc_[species].dx(2)]
-        #Jz_[species] = [df.project(ufl_expr, S, solver_type="gmres", preconditioner_type="amg")
-        #                for ufl_expr in Jz_loc]
-        if direction == 'z':
-            ufl_expr = - D * conc_[species].dx(2)
-        if direction == 'x':
-            ufl_expr = - D * conc_[species].dx(0)
-            
-        ufl_Iz = (conc_[species].dx(1))**2
-        Jz_diff_[species] = df.project(ufl_expr, S, solver_type="gmres", preconditioner_type="amg")
-        Iz_[species] = df.project(ufl_Iz, S, solver_type="gmres", preconditioner_type="amg")
-            
-    sg = StructuredGrid(S_u, N, origin, vectors, dL)
+        reac_ = dict()
+        for species, reaction_rate in zip(specii, reaction_rates):
+            reac_[species] = df.Function(S, name=reaction_rate)
+        
+        with df.HDF5File(mesh.mpi_comm(), os.path.join(args.input, conc_key), "r") as h5f:
+            for species in specii:
+                h5f.read(conc_[species], species)
 
-    xgrid, ygrid, zgrid = sg.create_coordinate_vectors()
-    xgrid = xgrid[0]
-    ygrid = ygrid[1]
-    zgrid = zgrid[2]
+            for species, reaction_rate in zip(specii, reaction_rates):
+                h5f.read(reac_[species], reaction_rate)
 
-    sg(u_x_)
-    ux_data = sg.array()
-    sg.probes.clear()
+        mpi_print("Interpolating gradients.")
+        dcdx_ = [dict(), dict(), dict()]
+        for species in specii:
+            #Jz_loc = [u_proj_z_ * conc_[species], - D * conc_[species].dx(2)]
+            #Jz_[species] = [df.project(ufl_expr, S, solver_type="gmres", preconditioner_type="amg")
+            #                for ufl_expr in Jz_loc]
+            #ufl_expr_Jz_diff = - D * conc_[species].dx(direction)
+                
+            #ufl_Iz = conc_[species].dx(tdims[0])**2 + conc_[species].dx(tdims[1])**2
+            #ufl_expr_Iz = sum([conc_[species].dx(dim)**2 for dim in tdims])
 
-    sg(u_y_)
-    uy_data = sg.array()
-    sg.probes.clear()
+            #Jz_diff_[species] = df.project(ufl_expr_Jz_diff, S, solver_type="minres", preconditioner_type="petsc_amg")
+            #Iz_[species] = df.project(ufl_expr_Iz, S, solver_type="minres", preconditioner_type="petsc_amg")
+            gradc = df.interpolate(df.CompiledExpression(helpers.Grad(), a=conc_[species], degree=0), V_DG0)
+            for dim in range(3):
+                #dcdx_[dim][species] = df.project(conc_[species].dx(dim), solver_type="minres", preconditioner_type="petsc_amg")
+                dcdx_[dim][species] = df.Function(S_DG0)
+                df.assign(dcdx_[dim][species], gradc.sub(dim))
 
-    sg(u_z_)
-    uz_data = sg.array()
-    sg.probes.clear()
+        #sg = StructuredGrid(S_u, N, origin, vectors, dL)
+
+        #xgrid, ygrid, zgrid = sg.create_coordinate_vectors()
+        #xgrid = xgrid[0]
+        #ygrid = ygrid[1]
+        #zgrid = zgrid[2]
+
+        #sg = StructuredGrid(S, N, origin, vectors, dL)
+
+        prob_conc = Probes(pts.flatten(), S)
+        prob_grad = Probes(pts.flatten(), S_DG0)
+        #prob_grad = Probes(pts.flatten(), S)
+
+        for species in conc_:
+            mpi_print(f"Species: {species}")
+            prob_conc(conc_[species])
+            data = prob_conc.array(0)
+            if mpi_root:
+                ofile.create_dataset(f"{species}/conc", data=data.reshape(N))
+            prob_conc.clear()
+
+            for dim in range(3):
+                prob_grad(dcdx_[dim][species])
+                data = prob_grad.array(0)
+                if mpi_root:
+                    ofile.create_dataset(f"{species}/grad{index2axis[dim]}", data=data.reshape(N))
+                prob_grad.clear()
+
+            #prob(Jz_diff_[species])
+            #data = prob.array(0)
+            #if mpi_root():
+            #    h5f.create_dataset(f"{species}/{Jname[1]}", data=data.reshape(N))
+            #prob.clear()
+
+            #prob(Iz_[species])
+            #data = prob.array(0)
+            #if mpi_root():
+            #    h5f.create_dataset(f"{species}/{Jname[2]}", data=data.reshape(N))
+            #prob.clear()
+
+        for species in reac_:
+            mpi_print(f"Reaction rate: {species}")
+            prob_grad(reac_[species])
+            data = prob_grad.array(0)
+            if mpi_root:
+                ofile.create_dataset(f"{species}/rate", data=data.reshape(N))
+            prob_grad.clear()
+
 
     if mpi_root:
-        h5f = h5py.File(args.con+"data/abc_data_Pe{}_it{}.h5".format(Pe__, it), "w")
-        h5f.create_dataset("ux", data=ux_data.reshape(N[::-1]))
-        h5f.create_dataset("uy", data=uy_data.reshape(N[::-1]))
-        h5f.create_dataset("uz", data=uz_data.reshape(N[::-1]))
-        h5f.create_dataset("x", data=xgrid)
-        h5f.create_dataset("y", data=ygrid)
-        h5f.create_dataset("z", data=zgrid)  
-
-    sg = StructuredGrid(S, N, origin, vectors, dL)
-
-    for species in specii:
-        print(species)
-        sg(conc_[species])
-        data = sg.probes.array(0)
-        if mpi_root:
-            h5f.create_dataset("{}/{}".format(species, "conc"), data=data.reshape(N[::-1]))
-        sg.probes.clear()
-
-        #for i in range(2):
-        #    #sg(Jz_[species][i])
-        sg(Jz_diff_[species])
-        #    #sg.tovtk(0, filename="dump_scalar_{}_{}.vtk".format(species, i))
-        data = sg.probes.array(0)
-        if mpi_root:
-            h5f.create_dataset("{}/{}".format(species, Jname[1]), data=data.reshape(N[::-1]))
-        sg.probes.clear()
-
-
-        sg(Iz_[species])
-        data = sg.probes.array(0)
-        if mpi_root:
-            h5f.create_dataset("{}/{}".format(species, Jname[2]), data=data.reshape(N[::-1]))
-        sg.probes.clear()
-
-    if mpi_root:
-        h5f.close()
+        ofile.close()
