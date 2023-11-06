@@ -37,11 +37,11 @@ def mpi_min(x):
     return x_min
 
 def mpi_sum(data):
-    data = mpi_comm.gather(data)
-    if mpi_rank == 0:
+    data = mpi_comm.gather(data, root=0)
+    if mpi_root:
         data = sum(data)
     else:
-        data = 0
+        data = 0    
     return data
 
 def create_folder_safely(dirname):

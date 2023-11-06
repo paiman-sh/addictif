@@ -21,6 +21,7 @@ def parse_args():
     #parser.add_argument("--mesh", type=str, default='mesh/', help="path to the mesh")
     #parser.add_argument("--con", type=str, default='concentration/', help="path to the concentration")
     #parser.add_argument("--direction", type=str, default='z', help="x, y or z direction of flow")
+    parser.add_argument("--invert", action="store_true", help="Invert flow direction")
     parser.add_argument("--tol", type=float, default=df.DOLFIN_EPS_LARGE, help="tol for subdomains")
     return parser.parse_args()
 
@@ -59,6 +60,9 @@ if __name__ == "__main__":
 
     with df.HDF5File(mesh_u.mpi_comm(), os.path.join(args.input, "u.h5"), "r") as h5f:
         h5f.read(u_, "u")
+
+    if args.invert:
+        u_.vector()[:] *= -1
    
     if it == 0:
       mesh = mesh_u
@@ -83,11 +87,12 @@ if __name__ == "__main__":
     subd.rename("subd", "subd")
     subd.set_all(0)
 
-    top = Top(x_min, x_max, tol, direction)
-    btm = Btm(x_min, x_max, tol, direction)
-
-    top.mark(subd, 1)
-    btm.mark(subd, 2) # not currently in use
+    if not args.invert:
+        top = Top(x_min, x_max, tol, direction)
+        top.mark(subd, 1)
+    else:
+        btm = Btm(x_min, x_max, tol, direction)
+        btm.mark(subd, 1)
 
     V = df.VectorFunctionSpace(mesh, "Lagrange", 1)
     S = df.FunctionSpace(mesh, "Lagrange", 1)
@@ -145,8 +150,8 @@ if __name__ == "__main__":
 
     delta_ = df.Function(S, name="delta")
 
-    bc_delta_top = df.DirichletBC(S, delta_top, subd, 1)
-    bcs_delta = [bc_delta_top]
+    bc_delta_inlet = df.DirichletBC(S, delta_top, subd, 1)
+    bcs_delta = [bc_delta_inlet]
 
     t0 = df.Timer("Assembling system")
     t0.start()
@@ -183,6 +188,7 @@ if __name__ == "__main__":
     prm["D"] = args.D
     prm["eps"] = eps
     prm["it"] = it
+    prm["invert"] = args.invert
     prm.dump(paramsfile)
 
     with df.XDMFFile(mesh.mpi_comm(), os.path.join(output_folder, "conc_show.xdmf")) as xdmff:

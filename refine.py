@@ -58,8 +58,8 @@ if __name__ == "__main__":
     prev_size = mpi_sum(mesh.num_cells())
     new_size = mpi_sum(new_mesh.num_cells())
     num_marked = mpi_sum(num_marked)
-
-    mpi_print(
-        ("Old mesh size: {}\n"
-         "Marked cells:  {}\t({:.3f}%)\n"
-         "New mesh size: {}\t({:.3f}x)").format(prev_size, num_marked, float(100*num_marked)/prev_size, new_size, float(new_size)/prev_size))
+    if mpi_root:
+        mpi_print(
+            ("Old mesh size: {}\n"
+            "Marked cells:  {}\t({:.3f}%)\n"
+            "New mesh size: {}\t({:.3f}x)").format(prev_size, num_marked, float(100*num_marked)/prev_size, new_size, float(new_size)/prev_size))
