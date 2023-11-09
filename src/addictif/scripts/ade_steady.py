@@ -1,8 +1,8 @@
 import dolfin as df
 import numpy as np
-from utils import (helper_code, mpi_print, mpi_sum, mpi_rank, mpi_max, mpi_min, 
-                   Top, Btm, axis2index,
-                   Params, create_folder_safely)
+from addictif.common.utils import (
+    helper_code, mpi_print, mpi_sum, mpi_rank, mpi_max, mpi_min, 
+    Top, Btm, axis2index, Params, create_folder_safely)
 import os
 import h5py
 import argparse
@@ -25,9 +25,7 @@ def parse_args():
     parser.add_argument("--tol", type=float, default=df.DOLFIN_EPS_LARGE, help="tol for subdomains")
     return parser.parse_args()
 
-
-if __name__ == "__main__":
-    
+def main():
     args = parse_args()
 
     helpers = df.compile_cpp_code(helper_code)
@@ -207,3 +205,6 @@ if __name__ == "__main__":
     mpi_print("Saving done.")
    
     df.list_timings(df.TimingClear.clear, [df.TimingType.wall])
+
+if __name__ == "__main__":
+    main()

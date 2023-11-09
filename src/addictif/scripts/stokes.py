@@ -1,8 +1,6 @@
 import dolfin as df
-import numpy as np
-from utils import mpi_print, mpi_max, mpi_min, create_folder_safely, Top, Btm, Boundary, SideWalls, Params, axis2index
+from addictif.common.utils import mpi_print, mpi_max, mpi_min, create_folder_safely, Top, Btm, Boundary, SideWalls, Params, axis2index
 import os
-from mpi4py import MPI
 import argparse
 
 def parse_args():
@@ -14,8 +12,7 @@ def parse_args():
     parser.add_argument("--sidewall_bc", type=str, default="slip", help="Sidewall boundary conditon")
     return parser.parse_args()
 
-if __name__ == "__main__":
-
+def main():
     args = parse_args()
 
     if args.direction not in axis2index:
@@ -148,3 +145,6 @@ if __name__ == "__main__":
 
     with df.HDF5File(mesh.mpi_comm(), os.path.join(velocity_folder, "u.h5"), "w") as h5f:
         h5f.write(u_, "u")
+
+if __name__ == "__main__":
+    main()

@@ -4,7 +4,7 @@ import h5py
 import os
 import numpy as np
 import argparse
-from utils import mpi_root, mpi_print, axis2index, index2axis, Params, mpi_max, mpi_min, helper_code
+from addictif.common.utils import mpi_root, mpi_print, axis2index, index2axis, Params, mpi_max, mpi_min, helper_code
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Analyze steady ADR")
@@ -23,8 +23,7 @@ def parse_args():
     # parser.add_argument("--direction", type=str, default='z', help="x or z direction of flow")
     return parser.parse_args()
 
-if __name__ == "__main__":
-
+def main():
     args = parse_args()
 
     prm_spec = Params(os.path.join(args.input, "params.dat"), required=True)
@@ -231,6 +230,8 @@ if __name__ == "__main__":
                 ofile.create_dataset(f"{species}/rate", data=data.reshape(N))
             prob_grad.clear()
 
-
     if mpi_root:
         ofile.close()
+
+if __name__ == "__main__":
+    main()

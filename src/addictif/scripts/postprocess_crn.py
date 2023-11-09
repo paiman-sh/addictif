@@ -1,9 +1,10 @@
 import argparse
 import dolfin as df
 import numpy as np
-from utils import mpi_root, Params, create_folder_safely, helper_code, xdmf_params, mpi_print, mpi_root
+from addictif.common.utils import mpi_root, Params, create_folder_safely, helper_code, xdmf_params, mpi_print, mpi_root
 #from chemistry.react_1.reaction import equilibrium_constants, compute_secondary_spec, compute_primary_spec, compute_conserved_spec, nspec, c_ref
 import importlib
+from importlib_resources import files
 
 import matplotlib.pyplot as plt
 import scipy.interpolate as intp
@@ -18,15 +19,14 @@ def parse_args():
     return parser.parse_args()
 
 def load_sols(crn, sols):
-    with open(os.path.join("chemistry", crn, "sols", sols + ".dat"), "r") as infile:
-        sols = eval(infile.read())
+    data_text = files("addictif.chemistry." + crn + ".sols").joinpath(sols + ".dat").read_text()
+    sols = eval(data_text)
     return sols
 
-
-if __name__ == "__main__":
+def main():
     args = parse_args()
 
-    crn = importlib.import_module(f"chemistry.{args.crn}")
+    crn = importlib.import_module(f"addictif.chemistry.{args.crn}")
     sols = load_sols(args.crn, args.sols)
 
     helpers = df.compile_cpp_code(helper_code)
@@ -182,3 +182,6 @@ if __name__ == "__main__":
         for ispec in range(crn.nspec):
             h5f.write(c_spec_[ispec], f"c_{ispec}")
             h5f.write(R_spec_[ispec], f"R_{ispec}")
+
+if __name__ == "__main__":
+    main()

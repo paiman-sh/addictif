@@ -3,7 +3,7 @@
 '''
 import numpy as np
 import argparse
-from utils import fetch_intp_data, index2axis, axis2index, create_folder_safely, mpi_root, mpi_size, mpi_print
+from addictif.common.utils import fetch_intp_data, index2axis, axis2index, create_folder_safely, mpi_root, mpi_size, mpi_print
 import os
 
 def parse_args():
@@ -13,7 +13,7 @@ def parse_args():
     parser.add_argument("--direction", type=str, default=None, help="Override direction (x, y or z)")
     return parser.parse_args()
 
-if __name__ == "__main__":
+def main():
     args = parse_args()
 
     if mpi_size > 1:
@@ -82,3 +82,5 @@ if __name__ == "__main__":
         plt.show()
         #plt.savefig(args.con + 'plots/average_conc/conc_Pe{}_it{}_.png'.format(Pe__, it), dpi=300)
 
+if __name__ == "__main__":
+    main()

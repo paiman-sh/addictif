@@ -1,7 +1,7 @@
 import argparse
 import numpy as np
 import dolfin as df
-from utils import mpi_print, Params, create_folder_safely
+from addictif.common.utils import mpi_print, Params, create_folder_safely
 import os
 
 def parse_args():
@@ -14,7 +14,7 @@ def parse_args():
     #parser.add_argument("--con", type=str, default='concentration/', help="path to the concentration")
     return parser.parse_args()
 
-if __name__ == "__main__":
+def main():
     args = parse_args()
     
     prm_ade = Params()
@@ -66,3 +66,6 @@ if __name__ == "__main__":
         h5f.write(a_, "a")
         h5f.write(b_, "b")
         h5f.write(c_, "c")
+
+if __name__ == "__main__":
+    main()

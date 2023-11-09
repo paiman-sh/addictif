@@ -10,7 +10,7 @@ def parse_args():
     parser.add_argument("--refine_tol", type=float, default=0.2, help="tolerance for refinement")
     return parser.parse_args()
 
-if __name__ == "__main__":
+def main():
     args = parse_args()
 
     helpers = df.compile_cpp_code(helper_code)
@@ -63,3 +63,6 @@ if __name__ == "__main__":
             ("Old mesh size: {}\n"
             "Marked cells:  {}\t({:.3f}%)\n"
             "New mesh size: {}\t({:.3f}x)").format(prev_size, num_marked, float(100*num_marked)/prev_size, new_size, float(new_size)/prev_size))
+
+if __name__ == "__main__":
+    main()
