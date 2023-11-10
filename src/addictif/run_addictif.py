@@ -9,7 +9,8 @@ list_of_scripts = ["stokes",
                    "postprocess_crn",
                    "analyze_data",
                    "compute_averages",
-                   "plot_scan"]
+                   "plot_scan",
+                   "make_video"]
 
 def main():
     assert len(sys.argv) > 1
