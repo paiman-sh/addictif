@@ -59,7 +59,6 @@ def main():
                 cmap = plt.get_cmap("viridis")
             pcm = ax.pcolormesh(X, Y, np.ma.masked_where(ma[ind], conc[species][ind]), cmap=cmap, shading="nearest", vmin=vmin[species], vmax=vmax[species])
             if args.arrows:
-                print(X.shape, u[tdims[0]][ind].shape)
                 ax.streamplot(X.T, Y.T,
                               np.ma.masked_where(ma[ind], u[tdims[0]][ind]).T,
                               np.ma.masked_where(ma[ind], u[tdims[1]][ind]).T, color='r', density=1.0)
@@ -75,7 +74,7 @@ def main():
 
             ax.set_title(f"${index2axis[direction]}$ = {x[direction][iz]:.2f}", fontsize=16)
             fig.tight_layout()
-            plt.savefig(os.path.join(imgfolder, f"scan_{species}_{index2axis[direction]}_step{iz}.png"))
+            plt.savefig(os.path.join(imgfolder, f"scan_{species}_{index2axis[direction]}_step{iz:06d}.png"))
             plt.close()
 
 if __name__ == "__main__":
