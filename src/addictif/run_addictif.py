@@ -4,6 +4,7 @@ import sys, importlib
 
 list_of_scripts = ["stokes",
                    "ade_steady",
+                   "refine",
                    "postprocess_abc",
                    "postprocess_crn",
                    "analyze_data",

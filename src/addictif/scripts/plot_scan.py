@@ -6,7 +6,8 @@ import argparse
 from addictif.common.utils import index2axis, axis2index, create_folder_safely, fetch_intp_data, mpi_rank, mpi_size
 
 class Parser():
-    def
+    def __init__(self):
+        pass
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Plot imshow")
@@ -58,7 +59,10 @@ def main():
                 cmap = plt.get_cmap("viridis")
             pcm = ax.pcolormesh(X, Y, np.ma.masked_where(ma[ind], conc[species][ind]), cmap=cmap, shading="nearest", vmin=vmin[species], vmax=vmax[species])
             if args.arrows:
-                ax.streamplot(X, Y, np.ma.masked_where(ma[ind], u[tdims[0]][ind]), u[tdims[1]][ind], color='r', density=1.0)
+                print(X.shape, u[tdims[0]][ind].shape)
+                ax.streamplot(X.T, Y.T,
+                              np.ma.masked_where(ma[ind], u[tdims[0]][ind]).T,
+                              np.ma.masked_where(ma[ind], u[tdims[1]][ind]).T, color='r', density=1.0)
             ax.set_aspect("equal")
             ax.set_xlabel(f"${index2axis[tdims[0]]}$", fontsize=16)
             ax.set_ylabel(f"${index2axis[tdims[1]]}$", fontsize=16)

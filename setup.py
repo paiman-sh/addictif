@@ -21,12 +21,13 @@ setup(name = "addictif",
       install_requires=[
           "argparse", 
           "h5py",
-          "fenicstools",
           "matplotlib",
           "mpi4py",
           "numpy"
       ],
       entry_points = {"console_scripts": ["addictif=addictif.run_addictif:main"]},
       include_package_data=True,
-      package_data={"addictif.chemistry": ["**/sols/*.dat"]},
+      package_data={"addictif.chemistry": ["**/sols/*.dat"],
+                    "addictif.common.fenicstools": ["cpp/*.cpp", "cpp/*.h"],
+                    "addictif.common": ["helper_code.cpp"]},
     )

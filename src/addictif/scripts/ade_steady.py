@@ -1,8 +1,8 @@
 import dolfin as df
 import numpy as np
 from addictif.common.utils import (
-    helper_code, mpi_print, mpi_sum, mpi_rank, mpi_max, mpi_min, 
-    Top, Btm, axis2index, Params, create_folder_safely)
+    helpers, mpi_print, mpi_sum, mpi_rank, mpi_max, mpi_min, 
+    Top, Btm, axis2index, Params, create_folder_safely, compile_cpp_file)
 import os
 import h5py
 import argparse
@@ -27,8 +27,6 @@ def parse_args():
 
 def main():
     args = parse_args()
-
-    helpers = df.compile_cpp_code(helper_code)
 
     D = args.D  # diffusion coefficient
     #pore_size = args.L
@@ -101,8 +99,8 @@ def main():
     ds = df.Measure("ds", domain=mesh, subdomain_data=subd)
     n = df.FacetNormal(mesh)
 
-    expr_str = "tanh((x[1]-0.5)/(sqrt(2)*eps))"
-    delta_top_expr = df.Expression(expr_str, eps=eps, degree=2)
+    expr_str = "tanh((x[1]-ymid)/(sqrt(2)*eps))"
+    delta_top_expr = df.Expression(expr_str, eps=eps, ymid=0.5*(x_max[1]+x_min[1]), degree=2)
     rho_top_expr = df.Expression("1.0", degree=2)
 
     delta_top = df.interpolate(delta_top_expr, S)

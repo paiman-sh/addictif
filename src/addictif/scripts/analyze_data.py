@@ -1,10 +1,11 @@
 import dolfin as df
-from fenicstools import Probes
+#from fenicstools import Probes
 import h5py
 import os
 import numpy as np
 import argparse
-from addictif.common.utils import mpi_root, mpi_print, axis2index, index2axis, Params, mpi_max, mpi_min, helper_code
+from addictif.common.utils import mpi_root, mpi_print, axis2index, index2axis, Params, mpi_max, mpi_min, helpers
+from addictif.common.fenicstools.Probes import Probes, GradProbes
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Analyze steady ADR")
@@ -57,8 +58,6 @@ def main():
 
     direction = axis2index[prm_u["direction"]]
     
-    helpers = df.compile_cpp_code(helper_code)
-
     #pore_size = args.L
     #it = args.it
     #Lx = args.Lx
@@ -145,7 +144,7 @@ def main():
 
         mpi_print("Setting up function spaces.")
         S = df.FunctionSpace(mesh, "Lagrange", 1)
-        V_DG0 = df.VectorFunctionSpace(mesh, "DG", 0)
+        #V_DG0 = df.VectorFunctionSpace(mesh, "DG", 0)
         S_DG0 = df.FunctionSpace(mesh, "DG", 0)
 
         conc_ = dict()
@@ -163,6 +162,7 @@ def main():
             for species, reaction_rate in zip(specii, reaction_rates):
                 h5f.read(reac_[species], reaction_rate)
 
+        """
         mpi_print("Interpolating gradients.")
         dcdx_ = [dict(), dict(), dict()]
         for species in specii:
@@ -181,6 +181,7 @@ def main():
                 #dcdx_[dim][species] = df.project(conc_[species].dx(dim), solver_type="minres", preconditioner_type="petsc_amg")
                 dcdx_[dim][species] = df.Function(S_DG0)
                 df.assign(dcdx_[dim][species], gradc.sub(dim))
+        """
 
         #sg = StructuredGrid(S_u, N, origin, vectors, dL)
 
@@ -191,44 +192,37 @@ def main():
 
         #sg = StructuredGrid(S, N, origin, vectors, dL)
 
-        prob_conc = Probes(pts.flatten(), S)
-        prob_grad = Probes(pts.flatten(), S_DG0)
+        prob_conc = GradProbes(pts.flatten(), S)
+        prob_reac = Probes(pts.flatten(), S_DG0)
         #prob_grad = Probes(pts.flatten(), S)
 
         for species in conc_:
             mpi_print(f"Species: {species}")
-            prob_conc(conc_[species])
+            prob_conc.grad(conc_[species])
             data = prob_conc.array(0)
+            data_grad = prob_conc.array_grad(0)
+            prob_conc.clear()
+            prob_conc.clear_grad()
+
             if mpi_root:
                 ofile.create_dataset(f"{species}/conc", data=data.reshape(N))
-            prob_conc.clear()
+                for dim in range(3):
+                    #prob_grad(dcdx_[dim][species])
+                    #data = prob_grad.array(0)
 
-            for dim in range(3):
-                prob_grad(dcdx_[dim][species])
-                data = prob_grad.array(0)
-                if mpi_root:
-                    ofile.create_dataset(f"{species}/grad{index2axis[dim]}", data=data.reshape(N))
-                prob_grad.clear()
+                    #err = data - data_grad[:, dim]
+                    #print(err.max())
 
-            #prob(Jz_diff_[species])
-            #data = prob.array(0)
-            #if mpi_root():
-            #    h5f.create_dataset(f"{species}/{Jname[1]}", data=data.reshape(N))
-            #prob.clear()
-
-            #prob(Iz_[species])
-            #data = prob.array(0)
-            #if mpi_root():
-            #    h5f.create_dataset(f"{species}/{Jname[2]}", data=data.reshape(N))
-            #prob.clear()
+                    ofile.create_dataset(f"{species}/grad{index2axis[dim]}", data=data_grad[:, dim].reshape(N))
+                    #prob_grad.clear()
 
         for species in reac_:
             mpi_print(f"Reaction rate: {species}")
-            prob_grad(reac_[species])
-            data = prob_grad.array(0)
+            prob_reac(reac_[species])
+            data = prob_reac.array(0)
+            prob_reac.clear()
             if mpi_root:
                 ofile.create_dataset(f"{species}/rate", data=data.reshape(N))
-            prob_grad.clear()
 
     if mpi_root:
         ofile.close()

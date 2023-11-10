@@ -1,6 +1,6 @@
 import argparse
 import dolfin as df
-from utils import helper_code, mpi_print, mpi_root, mpi_sum, Params, create_folder_safely
+from addictif.common.utils import helpers, mpi_print, mpi_root, mpi_sum, Params, create_folder_safely
 import os
 
 def parse_args():
@@ -12,8 +12,6 @@ def parse_args():
 
 def main():
     args = parse_args()
-
-    helpers = df.compile_cpp_code(helper_code)
 
     prm = Params()
     prm.load(os.path.join(args.input, "params.dat"), True)
