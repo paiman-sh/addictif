@@ -1,7 +1,7 @@
 import argparse
 import dolfin as df
 import numpy as np
-from addictif.common.utils import mpi_root, Params, create_folder_safely, helper_code, xdmf_params, mpi_print, mpi_root
+from addictif.common.utils import mpi_root, Params, create_folder_safely, helpers, xdmf_params, mpi_print, mpi_root
 #from chemistry.react_1.reaction import equilibrium_constants, compute_secondary_spec, compute_primary_spec, compute_conserved_spec, nspec, c_ref
 import importlib
 from importlib_resources import files
@@ -28,8 +28,6 @@ def main():
 
     crn = importlib.import_module(f"addictif.chemistry.{args.crn}")
     sols = load_sols(args.crn, args.sols)
-
-    helpers = df.compile_cpp_code(helper_code)
 
     c_a = np.zeros(crn.nspec)
     c_b = np.zeros(crn.nspec)

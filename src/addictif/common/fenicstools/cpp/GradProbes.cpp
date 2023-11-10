@@ -2,7 +2,6 @@
 
 using namespace dolfin;
 
-
 GradProbes::GradProbes(const Array<double>& x, const FunctionSpace& V)
 {
   const std::size_t Nd = V.mesh()->geometry().dim();
