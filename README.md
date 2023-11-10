@@ -1,19 +1,35 @@
-# project_rock_mixing
-We analyze the mixing process in porous rocks. We can proceed with the following steps given the mesh of a porous rock:
+ # AdDiCTIF
+This repository contains an implementation of *Ad*vection-*Di*ffusion-*C*hemistry in a *T*ime-*I*ndependent *F*ramework.
+The methodology is described in an upcoming paper. In particular, the workflow relies on the finite element method (via FEniCS) to solve steady advection-diffusion equation in arbitrary porous geometries in order to assess transverse mixing.
+Assuming instantanous reaction kinetics we can then, by simple post-processing, infer the concentration of chemical species entering into various chemical reaction networks, allowing the estimation of the relevant reaction rates. We also supply several scripts to analyze the conservative and reactive dynamics.
+
+### Installation
+To install, execute:
+```
+pip install .
+```
+
+We can proceed with the following steps given a mesh:
 
 ### Velocity from Stokes
-1. To get the stokes velocity field, run ```stokes.py```:
+1. To get the Stokes velocity field, run ```addictif stokes```:
 ```
-mpiexec -np [NUM_PROCESSES] python3 stokes.py --mesh path_to_the_mesh_file/ --vel path_where_velocity_will_be_stored/ --direction x 
+mpiexec -np [NUM_PROCESSES] addictif stokes --mesh path_to_the/mesh_file.h5 -o path_to_the/output_folder/ [--direction [x/y/*z*]] [--tol [tolerance]] [--sidewall_bc [noslip/*freeslip*]]
 ```
 We assume that the HDF5 file of the mesh is stored in path_to_the_mesh_file/. Depending on the desired flow direction, you can change it.
 
 ### Conservative advection-diffusion
-2. Run ```ade_steady.py``` to solve the conservative transport to get the concentration of delta:
+2. Run ```addictif ade_steady``` to solve the conservative transport to get the concentration of delta:
 ```
-mpiexec -np [NUM_PROCESSES] python3 ade_steady.py --mesh path_to_the_mesh_file/ --vel path_to_the_normalized_velocity_file/ --con path_where_concentration_will_be_stored/ --direction x --D 0.01 --L 0.2 --refine True --it 0
+mpiexec -np [NUM_PROCESSES] addictif ade_steady -i path_to_the/output_folder/ -D [diffusion coefficient] --it [iteration 0/1/...]
 ```
-Here, we use the same flow direction as the one we considered to derive the velocity field. We may define the diffusion coefficient ```D``` and the pore size ```L```. The option ```--refine True ``` is going to refine the mesh for the area with a high gradient of concentration and it is going to store the mesh in a separate file.
+We may define the diffusion coefficient ```D``` and the iteration number. The latter should be 0 at the first run.
+
+3. Run ```addictif refine``` to refine given a conservative field.
+```
+addictif refine ...
+```
+4. Then go back to 2 and increase `it` by 1.
 
 ### Post-processing
 3. Run with ```it = 0, 1, 2, etc.``` to have the concentration with refined mesh at the area with a high gradient of concentration.
