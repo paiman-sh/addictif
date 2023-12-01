@@ -15,6 +15,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Solve steady conservative transport")
     parser.add_argument("-i", "--input", type=str, required=True, help="Path to the folder with the velocity field")
     parser.add_argument("--it", type=int, default=0, help="Iteration")
+    parser.add_argument("--eps", type=float, default=0.01, help="Epsilon")
     #parser.add_argument("--refine", type=bool, default=True, help="Do you want refinement")
     parser.add_argument("-D", type=float, required=True, help="Diffusion coefficient")
     #parser.add_argument("--L", type=float, default=1, help="Pore size (to compute Peclet number)")
@@ -31,7 +32,7 @@ def main():
     D = args.D  # diffusion coefficient
     #pore_size = args.L
     it = args.it 
-    eps = 0.01
+    eps = args.eps
     # refine_tol = 0.2
     output_folder = os.path.join(args.input, f"conservative_D{D}_eps{eps}", f"it{it}")
     create_folder_safely(output_folder)

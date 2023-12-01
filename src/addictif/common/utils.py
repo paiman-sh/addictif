@@ -103,8 +103,9 @@ class Params():
                             self.prm[key] = val
 
     def dump(self, output_file):
-        with open(output_file, "w") as ofile:      
-            ofile.write("\n".join([f"{key}={val}" for key, val in self.prm.items()]))
+        if mpi_root:
+            with open(output_file, "w") as ofile:      
+                ofile.write("\n".join([f"{key}={val}" for key, val in self.prm.items()]))
 
     def __getitem__(self, key):
         if key in self.prm:
