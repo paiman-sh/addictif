@@ -10,6 +10,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Compute average concentration and fluxes")
     parser.add_argument("-i", "--input", type=str, required=True, help="Path to interpolated data (e.g. intpdata.h5)")
     parser.add_argument("--show", action="store_true", help="Show plots")
+    parser.add_argument("--invert", action="store_true", help="Invert flow direction")
     parser.add_argument("--direction", type=str, default=None, help="Override direction (x, y or z)")
     return parser.parse_args()
 
@@ -21,8 +22,15 @@ def main():
         exit()
 
     x, phi, u, conc, grad, prm = fetch_intp_data(args.input)
+    
 
     direction = prm["direction"]
+
+    if args.invert:
+        flip=-1
+    else:
+        flip=1
+
     if args.direction is not None:
         direction = axis2index[args.direction]
     x_min = np.array(prm["x_min"])
@@ -39,13 +47,23 @@ def main():
     conc_mean = dict()
     Jz_mean = dict()
     I_mean = dict()
+    Rz_mean = dict()
     Ixy_mean = dict()
     for species in conc:
         conc_mean[species] = conc[species].mean(axis=tuple(tdims))
-        Jz = conc[species] * u[direction] - D * grad[species][direction]
+        Jz = flip * conc[species] * u[direction] - D * grad[species][direction]
         Jz_mean[species] = Jz.mean(axis=tuple(tdims))
         I = D * np.sum([grad[species][dim]**2 for dim in range(3)], axis=0)
         I_mean[species] = I.mean(axis=tuple(tdims))
+        
+        laplacian_c = np.zeros_like(grad[species])
+        for dim in range(3):
+            laplacian_c += np.gradient(grad[species][dim], axis=dim, edge_order=2)
+        
+        Rz = np.sum([flip * grad[species][dim] * u[dim] - D * laplacian_c[dim] for dim in range(3)], axis=0)
+        #Rz = np.sum([- grad[species][dim] * u[dim] for dim in range(3)], axis=0)
+        Rz_mean[species] = Rz.mean(axis=tuple(tdims))
+        
     uz_mean = u[direction].mean(axis=tuple(tdims))
     por_mean = phi.mean(axis=tuple(tdims))
 
@@ -53,8 +71,10 @@ def main():
         header = " ".join([index2axis[direction], 
                         "porosity", f"u_{index2axis[direction]}", *conc_mean.keys(), 
                         *[f"J_{key}_{index2axis[direction]}" for key in Jz_mean.keys()],
-                        *[f"I_{key}" for key in Jz_mean.keys()]])
-        data = np.vstack([x[direction], por_mean, uz_mean, *conc_mean.values(), *Jz_mean.values(), *I_mean.values()]).T
+                        *[f"I_{key}" for key in Jz_mean.keys()],
+                        *[f"R_{key}" for key in Jz_mean.keys()]]) 
+        data = np.vstack([x[direction], por_mean, uz_mean, *conc_mean.values(), *Jz_mean.values(), *I_mean.values(), *Rz_mean.values()]).T
+        #data = np.vstack([x[direction], por_mean, uz_mean, *conc_mean.values(), *Jz_mean.values(), *I_mean.values()]).T
         np.savetxt(os.path.join(analysisfolder, f"averages_{index2axis[direction]}.dat"), data, header=header)
 
     if mpi_root and args.show:

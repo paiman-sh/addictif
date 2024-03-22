@@ -16,6 +16,7 @@ def parse_args():
     parser.add_argument("-i", "--input", type=str, required=True, help="Path to the folder with the velocity field")
     parser.add_argument("--it", type=int, default=0, help="Iteration")
     parser.add_argument("--eps", type=float, default=0.01, help="Epsilon")
+    parser.add_argument("--inlet_func", choices=["erf", "tanh"], type=str.lower, default="erf", help="Inlet function")
     #parser.add_argument("--refine", type=bool, default=True, help="Do you want refinement")
     parser.add_argument("-D", type=float, required=True, help="Diffusion coefficient")
     #parser.add_argument("--L", type=float, default=1, help="Pore size (to compute Peclet number)")
@@ -33,6 +34,7 @@ def main():
     #pore_size = args.L
     it = args.it 
     eps = args.eps
+    inlet_func = args.inlet_func
     # refine_tol = 0.2
     output_folder = os.path.join(args.input, f"conservative_D{D}_eps{eps}", f"it{it}")
     create_folder_safely(output_folder)
@@ -100,7 +102,13 @@ def main():
     ds = df.Measure("ds", domain=mesh, subdomain_data=subd)
     n = df.FacetNormal(mesh)
 
-    expr_str = "tanh((x[1]-ymid)/(sqrt(2)*eps))"
+    if inlet_func == "erf":
+        mpi_print("Choosing erf as the inlet function.")
+        expr_str = "erf((x[1]-ymid)/(eps))"
+    else:
+        mpi_print("Choosing tanh as the inlet function.")
+        expr_str = "tanh((x[1]-ymid)/(sqrt(2)*eps))"
+
     delta_top_expr = df.Expression(expr_str, eps=eps, ymid=0.5*(x_max[1]+x_min[1]), degree=2)
     rho_top_expr = df.Expression("1.0", degree=2)
 
