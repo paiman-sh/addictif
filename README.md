@@ -1,6 +1,6 @@
  # AdDiCTIF
 This repository contains an implementation of *Ad*vection-*Di*ffusion-*C*hemistry in a *T*ime-*I*ndependent *F*ramework.
-The methodology is described in an upcoming paper. In particular, the workflow relies on the finite element method (via FEniCS) to solve steady advection-diffusion equation in arbitrary porous geometries in order to assess transverse mixing.
+The methodology is described in [our preprint](https://dx.doi.org/10.2139/ssrn.4783198). In particular, the workflow relies on the finite element method (via FEniCS) to solve steady advection-diffusion equation in arbitrary porous geometries in order to assess transverse mixing.
 Assuming instantanous reaction kinetics we can then, by simple post-processing, infer the concentration of chemical species entering into various chemical reaction networks, allowing the estimation of the relevant reaction rates. We also supply several scripts to analyze the conservative and reactive dynamics.
 
 ### Installation
