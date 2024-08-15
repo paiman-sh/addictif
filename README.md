@@ -37,6 +37,7 @@ mpiexec -np [NUM_PROCESSES] addictif refine -i  path_to_the/mesh_folder_at_itera
 mpiexec -np [NUM_PROCESSES] addictif postprocess_abc -i path_to_the/output_folder/
 ```
 Note that we run the post_processing code on the results of the final iteration.
+
 6.  We can interpolate the solution into a Cartesian grid. This step enables easy analysis of different cross-sections by running ```analyze_data.py``` :
 ```
 mpiexec -np [NUM_PROCESSES] addictif analyze_data -i path_to_the/output_folder/ -Nt [Number of nodes based on desired resolution]
